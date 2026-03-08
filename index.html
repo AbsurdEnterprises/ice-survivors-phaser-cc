@@ -2506,6 +2506,18 @@ class LevelUpScene extends Phaser.Scene {
             options = this.generateOptions();
         }
 
+        if (options.length === 0) {
+            // All items maxed - just resume
+            this.add.text(640, 360, 'ALL ITEMS MAXED!', {
+                fontSize: '24px', fontFamily: 'monospace', color: '#FFC107'
+            }).setOrigin(0.5);
+            this.time.delayedCall(1000, () => {
+                this.gameScene.resumeFromLevelUp();
+                this.scene.stop();
+            });
+            return;
+        }
+
         const cardCount = options.length;
         const cardW = 200, cardH = 120, gap = 20;
         const totalW = cardCount * cardW + (cardCount - 1) * gap;
@@ -2567,7 +2579,7 @@ class LevelUpScene extends Phaser.Scene {
 
         const luck = p.stats.luck || 0;
         const weaponCount = p.weapons.length;
-        const passiveCount = Object.keys(p.passiveLevels).length;
+        const passiveCount = Object.keys(p.passiveLevels).filter(k => p.passiveLevels[k] > 0).length;
 
         // Weapon upgrades
         for (const w of p.weapons) {
@@ -2635,6 +2647,8 @@ class LevelUpScene extends Phaser.Scene {
     }
 
     selectOption(opt) {
+        if (this._selected) return;
+        this._selected = true;
         const gs = this.gameScene;
         if (this.isEvolution) {
             gs.applyEvolution(opt.evoData);
