@@ -555,7 +555,7 @@ class WeaponMeleeSweep extends WeaponBase {
         sweep.body.setSize(60 * area, 28 * area);
         sweep.setAlpha(0.7);
         this.scene.tweens.add({ targets: sweep, alpha: 0, scaleX: area * 1.3, duration: 250,
-            onComplete: () => { sweep.setActive(false).setVisible(false); sweep.body.stop(); }
+            onComplete: () => { sweep.setActive(false).setVisible(false); sweep.body.enable = false; sweep.body.stop(); }
         });
     }
 }
@@ -1596,14 +1596,21 @@ class GameScene extends Phaser.Scene {
         proj.life = 5;
     }
 
+    deactivateProjectile(proj) {
+        proj.setActive(false).setVisible(false);
+        proj.body.enable = false;
+        proj.body.stop();
+        proj.isBouncing = false;
+        proj.isLob = false;
+    }
+
     updateProjectiles(dt) {
         this.projectiles.children.each(proj => {
             if (!proj.active) return;
             if (proj.isLob) return; // handled separately
             proj.life -= dt;
             if (proj.life <= 0) {
-                proj.setActive(false).setVisible(false);
-                proj.body.stop();
+                this.deactivateProjectile(proj);
                 return;
             }
         });
@@ -1611,9 +1618,7 @@ class GameScene extends Phaser.Scene {
             if (!proj.active) return;
             proj.life -= dt;
             if (proj.life <= 0) {
-                proj.setActive(false).setVisible(false);
-                proj.body.enable = false;
-                proj.body.stop();
+                this.deactivateProjectile(proj);
             }
         });
     }
@@ -1637,9 +1642,7 @@ class GameScene extends Phaser.Scene {
                         this.damageEnemy(e, proj.dmg, proj.knockback, proj.targetX, proj.targetY, proj.weaponId);
                     }
                 }
-                proj.setActive(false).setVisible(false);
-                proj.body.stop();
-                proj.isLob = false;
+                this.deactivateProjectile(proj);
                 return;
             }
             // Parabolic movement
@@ -1715,8 +1718,7 @@ class GameScene extends Phaser.Scene {
         if (proj.pierce !== undefined && proj.pierce !== 999) {
             proj.pierce--;
             if (proj.pierce <= 0) {
-                proj.setActive(false).setVisible(false);
-                proj.body.stop();
+                this.deactivateProjectile(proj);
             }
         }
     }
@@ -1850,9 +1852,7 @@ class GameScene extends Phaser.Scene {
         if (!proj.active || this.player.isInvulnerable) return;
         const dmg = Math.max(1, (proj.dmg || 10) - this.player.stats.armor);
         this.player.hp -= dmg;
-        proj.setActive(false).setVisible(false);
-        proj.body.enable = false;
-        proj.body.stop();
+        this.deactivateProjectile(proj);
 
         this.player.setTint(0xEF5350);
         this.cameras.main.shake(100, 0.005);
@@ -2336,8 +2336,7 @@ class GameScene extends Phaser.Scene {
         if (proj.pierce !== undefined && proj.pierce !== 999) {
             proj.pierce--;
             if (proj.pierce <= 0) {
-                proj.setActive(false).setVisible(false);
-                proj.body.stop();
+                this.deactivateProjectile(proj);
             }
         }
     }
