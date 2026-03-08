@@ -548,6 +548,7 @@ class WeaponMeleeSweep extends WeaponBase {
         const sweep = this.scene.projectiles.get(p.x + dir * 30 * area, p.y, 'proj_sweep');
         if (!sweep) return;
         sweep.setActive(true).setVisible(true).setScale(area, area);
+        sweep.body.enable = true;
         sweep.setFlipX(dir < 0);
         sweep.dmg = dmg; sweep.pierce = 999; sweep.knockback = this.data.knockback;
         sweep.weaponId = this.id; sweep.hitEnemies = new Set();
@@ -580,6 +581,7 @@ class WeaponAutoTarget extends WeaponBase {
             const proj = this.scene.projectiles.get(p.x, p.y, 'proj_w02');
             if (!proj) continue;
             proj.setActive(true).setVisible(true).setScale(0.8);
+            proj.body.enable = true;
             const angle = Math.atan2(target.y - p.y, target.x - p.x);
             const speed = 400 * (1 + (this.scene.player.stats.projectileSpeed || 0));
             proj.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
@@ -602,6 +604,7 @@ class WeaponBarrage extends WeaponBase {
             const proj = this.scene.projectiles.get(p.x, p.y, 'proj_w03');
             if (!proj) continue;
             proj.setActive(true).setVisible(true).setScale(0.7);
+            proj.body.enable = true;
             const speed = 350 * (1 + (this.scene.player.stats.projectileSpeed || 0));
             proj.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
             proj.dmg = dmg; proj.pierce = this.data.pierce; proj.knockback = this.evolved ? 120 : this.data.knockback;
@@ -624,6 +627,7 @@ class WeaponArcLob extends WeaponBase {
             const proj = this.scene.projectiles.get(p.x, p.y, 'proj_w04');
             if (!proj) continue;
             proj.setActive(true).setVisible(true).setScale(1);
+            proj.body.enable = true;
             proj.dmg = dmg; proj.pierce = this.data.pierce; proj.knockback = this.data.knockback;
             proj.weaponId = this.id; proj.hitEnemies = new Set(); proj.life = 3;
             proj.isLob = true; proj.lobTime = 0; proj.lobDuration = 0.6;
@@ -799,6 +803,7 @@ class WeaponBounce extends WeaponBase {
             const proj = this.scene.projectiles.get(p.x, p.y, 'proj_w09');
             if (!proj) continue;
             proj.setActive(true).setVisible(true).setScale(1);
+            proj.body.enable = true;
             const angle = Math.random() * Math.PI * 2;
             const speed = 300 * (1 + (this.scene.player.stats.projectileSpeed || 0));
             proj.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
@@ -1113,6 +1118,7 @@ class GameScene extends Phaser.Scene {
 
         // Ground pools
         this.groundPools = [];
+        this._passiveIcons = [];
 
         // Overlaps
         this.physics.add.overlap(this.projectiles, this.enemies, this.onProjectileHitEnemy, null, this);
@@ -1341,7 +1347,8 @@ class GameScene extends Phaser.Scene {
         // Spawn destructibles
         this.updateDestructibleSpawning(dt);
 
-        // XP gem aggregation
+        // XP gem attraction and aggregation
+        this.attractGems();
         this.aggregateGems();
 
         // Update spatial hash
@@ -1551,6 +1558,9 @@ class GameScene extends Phaser.Scene {
                         enemy.fireTimer = 3;
                         this.fireEnemyProjectile(enemy);
                     }
+                    break;
+                case 'linear':
+                    // Hazard vehicles keep their velocity, no AI needed
                     break;
             }
         });
@@ -1909,14 +1919,6 @@ class GameScene extends Phaser.Scene {
 
     onCollectGem(player, gem) {
         if (!gem.active) return;
-        const dist = Phaser.Math.Distance.Between(player.x, player.y, gem.x, gem.y);
-        if (dist > this.player.stats.xpRadius * (1 + (this.player.stats.xpRadius > 64 ? 0.5 : 0))) {
-            // Attract towards player
-            const dx = player.x - gem.x, dy = player.y - gem.y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-            gem.body.setVelocity((dx / d) * 200, (dy / d) * 200);
-            return;
-        }
         gem.setActive(false).setVisible(false);
         gem.body.enable = false;
         gem.body.stop();
@@ -1928,6 +1930,20 @@ class GameScene extends Phaser.Scene {
             this.player.xpToNext = this.xpRequired(this.player.level + 1);
             this.triggerLevelUp();
         }
+    }
+
+    attractGems() {
+        const p = this.player;
+        const radius = p.stats.xpRadius;
+        this.xpGems.children.each(gem => {
+            if (!gem.active) return;
+            const dx = p.x - gem.x, dy = p.y - gem.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < radius) {
+                const speed = 300 + (radius - dist) * 3;
+                gem.body.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+            }
+        });
     }
 
     aggregateGems() {
@@ -1996,12 +2012,11 @@ class GameScene extends Phaser.Scene {
     }
 
     addPassive(passiveId) {
-        if (!this.player.passiveLevels[passiveId]) {
-            this.player.passiveLevels[passiveId] = 0;
-        }
-        if (Object.keys(this.player.passiveLevels).length > 6 && !this.player.passiveLevels[passiveId]) return;
+        const currentKeys = Object.keys(this.player.passiveLevels).filter(k => this.player.passiveLevels[k] > 0);
+        if (currentKeys.length >= 6 && !this.player.passiveLevels[passiveId]) return;
         this.player.passiveLevels[passiveId] = (this.player.passiveLevels[passiveId] || 0) + 1;
         this.recalcPassives();
+        this.updatePassiveDisplay();
     }
 
     recalcPassives() {
@@ -2062,6 +2077,28 @@ class GameScene extends Phaser.Scene {
                 fontSize: '8px', fontFamily: 'monospace', color: '#fff'
             }).setOrigin(1, 1).setScrollFactor(0).setDepth(1003);
             this.weaponIcons.push(lvlTxt);
+        }
+        this.updatePassiveDisplay();
+    }
+
+    updatePassiveDisplay() {
+        if (!this._passiveIcons) this._passiveIcons = [];
+        for (const ic of this._passiveIcons) ic.destroy();
+        this._passiveIcons = [];
+        const passiveIds = Object.keys(this.player.passiveLevels);
+        for (let i = 0; i < passiveIds.length && i < 6; i++) {
+            const pid = passiveIds[i];
+            const pd = PASSIVE_DATA[pid];
+            const lvl = this.player.passiveLevels[pid];
+            const x = 1100 + i * 30, y = 690;
+            const color = Phaser.Display.Color.HexStringToColor(pd.color).color;
+            const icon = this.add.circle(x, y, 8, color);
+            icon.setScrollFactor(0).setDepth(1002);
+            this._passiveIcons.push(icon);
+            const lvlTxt = this.add.text(x + 8, y + 8, String(lvl), {
+                fontSize: '8px', fontFamily: 'monospace', color: '#fff'
+            }).setOrigin(1, 1).setScrollFactor(0).setDepth(1003);
+            this._passiveIcons.push(lvlTxt);
         }
     }
 
