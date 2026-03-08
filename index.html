@@ -389,20 +389,16 @@ class ProceduralSprites {
     static _genBitmapFont(textures) {
         const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:.-/%+! ';
         const cw = 12, ch = 18;
-        const cols = chars.length;
-        const { canvas, ctx } = this._ctx(cols * cw, ch);
-        ctx.fillStyle = '#ECEFF1';
-        ctx.font = 'bold 14px monospace';
-        ctx.textBaseline = 'top';
-        for (let i = 0; i < chars.length; i++) {
-            ctx.fillText(chars[i], i * cw + 1, 1);
-        }
-        textures.addCanvas('bitmapfont', canvas);
-        // Store char map
         ProceduralSprites.fontChars = {};
         ProceduralSprites.fontCW = cw;
         ProceduralSprites.fontCH = ch;
         for (let i = 0; i < chars.length; i++) {
+            const { canvas, ctx } = this._ctx(cw, ch);
+            ctx.fillStyle = '#ECEFF1';
+            ctx.font = 'bold 14px monospace';
+            ctx.textBaseline = 'top';
+            ctx.fillText(chars[i], 1, 1);
+            textures.addCanvas('font_' + i, canvas);
             ProceduralSprites.fontChars[chars[i]] = i;
         }
     }
@@ -443,7 +439,7 @@ class BitmapText {
         const cw = ProceduralSprites.fontCW;
         // Reuse or create sprites
         while (this.sprites.length < text.length) {
-            const s = this.scene.add.sprite(0, 0, 'bitmapfont');
+            const s = this.scene.add.sprite(0, 0, 'font_0');
             s.setScale(this._scale);
             s.setOrigin(0, 0);
             if (this._tint) s.setTint(this._tint);
@@ -455,7 +451,7 @@ class BitmapText {
                 const charIdx = ProceduralSprites.fontChars[text[i]];
                 if (charIdx !== undefined) {
                     this.sprites[i].setVisible(true);
-                    this.sprites[i].setCrop(charIdx * cw, 0, cw, ProceduralSprites.fontCH);
+                    this.sprites[i].setTexture('font_' + charIdx);
                     this.sprites[i].setPosition(i * cw * this._scale, 0);
                 } else {
                     this.sprites[i].setVisible(false);
@@ -1095,6 +1091,7 @@ class GameScene extends Phaser.Scene {
         this.player.goldEarned = 0;
         this.player.hasRevive = (saveData.metaLevels.meta_04 || 0) > 0;
         this.player.reviveUsed = false;
+        this.player.isDead = false;
 
         // Camera
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
@@ -1128,6 +1125,7 @@ class GameScene extends Phaser.Scene {
         this.physics.add.overlap(this.player, this.chests, this.onCollectChest, null, this);
         this.physics.add.overlap(this.projectiles, this.destructibles, this.onProjectileHitDestructible, null, this);
         this.physics.add.overlap(this.enemyProjectiles, this.player, this.onEnemyProjHitPlayer, null, this);
+        this.physics.add.collider(this.player, this.destructibles);
 
         // Timers
         this.runTime = 0;
@@ -1811,7 +1809,7 @@ class GameScene extends Phaser.Scene {
     }
 
     onEnemyHitPlayer(enemy, player) {
-        if (!enemy.active || this.player.isInvulnerable) return;
+        if (!enemy.active || this.player.isInvulnerable || this.player.isDead) return;
         if (enemy.hp <= 0) return;
         const rawDmg = enemy.contactDmg || 5;
         const dmg = Math.max(1, rawDmg - this.player.stats.armor);
@@ -1850,7 +1848,7 @@ class GameScene extends Phaser.Scene {
     }
 
     onEnemyProjHitPlayer(proj, player) {
-        if (!proj.active || this.player.isInvulnerable) return;
+        if (!proj.active || this.player.isInvulnerable || this.player.isDead) return;
         const dmg = Math.max(1, (proj.dmg || 10) - this.player.stats.armor);
         this.player.hp -= dmg;
         this.deactivateProjectile(proj);
@@ -1883,8 +1881,12 @@ class GameScene extends Phaser.Scene {
     }
 
     playerDeath() {
+        if (this.player.isDead) return;
+        this.player.isDead = true;
         this.isPaused = true;
         this.player.body.setVelocity(0, 0);
+        this.player.body.enable = false;
+        this.physics.pause();
         this.cameras.main.shake(300, 0.01);
         this.flashScreen(0xEF5350, 500);
         // Save stats
